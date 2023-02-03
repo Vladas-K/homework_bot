@@ -133,7 +133,7 @@ if __name__ == '__main__':
         handlers=[
             logging.FileHandler(
                 os.path.abspath('program.log'),
-                filemode='a', encoding='UTF-8'),
+                mode='a', encoding='UTF-8'),
             logging.StreamHandler(stream=sys.stdout)],
     )
     main()
