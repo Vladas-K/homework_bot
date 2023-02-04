@@ -1,14 +1,29 @@
+import logging
 import os
-import requests
-from dotenv import load_dotenv
-import telegram
+import sys
 import time
 from http import HTTPStatus
-import logging
+
+from dotenv import load_dotenv
+
 import exceptions
-import sys
+
+import requests
+
+import telegram
+
 
 load_dotenv()
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s, %(levelname)s, %(message)s',
+    handlers=[
+        logging.FileHandler(
+            os.path.abspath('program.log'),
+            mode='a', encoding='UTF-8'),
+        logging.StreamHandler(stream=sys.stdout)],
+)
+logger = logging.getLogger(__name__)
 
 
 PRACTICUM_TOKEN = os.getenv('PRACTICUM_TOKEN')
@@ -27,49 +42,53 @@ HOMEWORK_VERDICTS = {
 }
 
 
-def check_tokens():
+def check_tokens() -> bool:
     """Проверяет  доступность переменных окружения."""
-    return all([TELEGRAM_TOKEN, PRACTICUM_TOKEN, TELEGRAM_CHAT_ID])
+    return all((TELEGRAM_TOKEN, PRACTICUM_TOKEN, TELEGRAM_CHAT_ID))
 
 
-def send_message(bot, message):
+def send_message(bot: telegram.bot.Bot, message: str) -> None:
     """Отправляет сообщение в Telegram чат."""
     try:
         bot.send_message(TELEGRAM_CHAT_ID, message)
-    except Exception as error:
-        logging.error(f'Ошибка при обращении к API Telegram: {error}')
-    logging.debug('Сообщение отправлено')
+        logging.debug('Сообщение отправлено')
+    except telegram.TelegramError as telegram_error:
+        logger.error(
+            f'Сообщение не отправлено: {telegram_error}')
 
 
-def get_api_answer(timestamp):
+def get_api_answer(timestamp: int) -> dict:
     """Делает запрос к эндпоинту API-сервиса."""
-    timestamp = int(time.time())
     try:
         homework_statuses = requests.get(
-            ENDPOINT, headers=HEADERS, params={'from_date': timestamp}
+            ENDPOINT, headers=HEADERS, params={'from_date': timestamp},
         )
         if homework_statuses.status_code != HTTPStatus.OK:
             raise exceptions.IncorrectResponseCode(
                 'Не верный код ответа')
         return homework_statuses.json()
-    except Exception:
-        raise exceptions.IncorrectResponseCode(
-            'Не верный код ответа')
+    except exceptions.IncorrectResponseCode as error:
+        logger.exception(error)
+        raise
+    except requests.exceptions.RequestException as request_error:
+        logger.exception(request_error)
+        raise exceptions.RequestExceptionError
 
 
-def check_response(response):
+def check_response(response: dict) -> list:
     """Проверяет валидность ответа."""
     try:
         homework = response['homeworks']
     except KeyError as error:
         logging.error(f'Ошибка доступа по ключу homeworks: {error}')
+        raise KeyError(f'Ошибка доступа по ключу homeworks: {error}')
     if not isinstance(homework, list):
         logging.error('Homeworks не в виде списка')
         raise TypeError('Homeworks не в виде списка')
     return homework
 
 
-def parse_status(homework):
+def parse_status(homework: dict) -> str:
     """Анализирует  статус ответа."""
     if 'homework_name' not in homework:
         raise KeyError('В ответе отсутсвует ключ homework_name')
@@ -77,15 +96,11 @@ def parse_status(homework):
     homework_status = homework.get('status')
     if homework_status not in HOMEWORK_VERDICTS:
         raise ValueError(f'Неизвестный статус работы - {homework_status}')
-    return(
-        'Изменился статус проверки работы "{homework_name}" {verdict}'
-    ).format(
-        homework_name=homework_name,
-        verdict=HOMEWORK_VERDICTS[homework_status]
-    )
+    verdict = HOMEWORK_VERDICTS[homework_status]
+    return f'Изменился статус проверки работы "{homework_name}" {verdict}'
 
 
-def main():
+def main() -> None:
     """Основная логика работы бота."""
     if not check_tokens():
         message = 'Отсутствует токен. Бот остановлен!'
@@ -115,7 +130,7 @@ def main():
             else:
                 logging.info(message)
 
-        except Exception as error:
+        except exceptions.ProgramCrash as error:
             message = f'Сбой в работе программы: {error}'
             logging.error(message, exc_info=True)
             if message != prev_msg:
@@ -127,13 +142,4 @@ def main():
 
 
 if __name__ == '__main__':
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s, %(levelname)s, %(message)s',
-        handlers=[
-            logging.FileHandler(
-                os.path.abspath('program.log'),
-                mode='a', encoding='UTF-8'),
-            logging.StreamHandler(stream=sys.stdout)],
-    )
     main()
