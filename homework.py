@@ -4,13 +4,11 @@ import sys
 import time
 from http import HTTPStatus
 
+import requests
+import telegram
 from dotenv import load_dotenv
 
 import exceptions
-
-import requests
-
-import telegram
 
 
 load_dotenv()
@@ -69,7 +67,7 @@ def get_api_answer(timestamp: int) -> dict:
         return homework_statuses.json()
     except exceptions.IncorrectResponseCode as error:
         logger.exception(error)
-        raise
+        raise exceptions.IncorrectResponseCode
     except requests.exceptions.RequestException as request_error:
         logger.exception(request_error)
         raise exceptions.RequestExceptionError
@@ -129,13 +127,17 @@ def main() -> None:
                 prev_msg = message
             else:
                 logging.info(message)
-
-        except exceptions.ProgramCrash as error:
-            message = f'Сбой в работе программы: {error}'
-            logging.error(message, exc_info=True)
             if message != prev_msg:
                 send_message(bot, message)
                 prev_msg = message
+        except IndexError:
+            logging.info('Обновлений не найдено')
+        except TypeError as error:
+            message = f'Неверный тип данных: {error}'
+            logging.error(message)
+        except KeyError as error:
+            message = f'Ошибка доступа по ключу: {error}'
+            logging.error(message)
 
         finally:
             time.sleep(RETRY_PERIOD)

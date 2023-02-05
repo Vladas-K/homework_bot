@@ -3,6 +3,3 @@ class IncorrectResponseCode(Exception):
 
 class RequestExceptionError(Exception):
     """Ошибка запроса."""
-
-class ProgramCrash(Exception):
-    """Сбой в работе программы."""
